@@ -1,4 +1,6 @@
 /*
+ * Modified by Proxora GmbH, using code form from {@link com.lowagie.text.pdf.FontSelector} (Copyright 2003 by Paulo Soares)
+ *
  * Copyright 2004 Paulo Soares
  *
  * The contents of this file are subject to the Mozilla Public License Version 1.1
@@ -45,30 +47,24 @@
  * 
  * If you didn't download this code from the following link, you should check if
  * you aren't using an obsolete version:
- * http://www.lowagie.com/iText/
+ * http://www.lowagie.com/iText/ *
  */
 
 package com.lowagie.text.html.simpleparser;
 
-import java.awt.Color;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Properties;
-import java.util.StringTokenizer;
+import java.awt.*;
+import java.util.*;
+import java.util.List;
 
-import com.lowagie.text.Chunk;
-import com.lowagie.text.Element;
-import com.lowagie.text.ElementTags;
+import com.lowagie.text.*;
 import com.lowagie.text.Font;
-import com.lowagie.text.FontFactory;
-import com.lowagie.text.ListItem;
-import com.lowagie.text.Paragraph;
-import com.lowagie.text.html.Markup;
+import com.lowagie.text.error_messages.MessageLocalization;
 import com.lowagie.text.html.HtmlTags;
+import com.lowagie.text.html.Markup;
 import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.HyphenationAuto;
 import com.lowagie.text.pdf.HyphenationEvent;
-import com.lowagie.text.FontProvider;
+
 /**
  *
  * @author  psoares
@@ -84,8 +80,86 @@ public class FactoryProperties {
 	public FactoryProperties() {
 	}
 
+	public Element createPhrase(String text, ChainedProperties props, String[] fontNames) {
+		if(fontNames == null) {
+			//old functionality
+			return createChunk(text, props);
+		}
+
+		List<Font> fonts = new ArrayList<Font>();
+		for(String fontName : fontNames) {
+			Font font = getFont(props, fontName);
+			fonts.add(font);
+		}
+
+		int fsize = fonts.size();
+		if (fsize == 0)
+			throw new IndexOutOfBoundsException(MessageLocalization.getComposedMessage("no.font.is.defined"));
+		char cc[] = text.toCharArray();
+		int len = cc.length;
+		StringBuffer sb = new StringBuffer();
+		Font font = null;
+		int lastidx = -1;
+		Phrase ret = new Phrase();
+		for (int k = 0; k < len; ++k) {
+			char c = cc[k];
+			if (c == '\n' || c == '\r') {
+				sb.append(c);
+				if (lastidx == -1) {
+					lastidx = 0;
+				}
+				continue;
+			}
+			if (Utilities.isSurrogatePair(cc, k)) {
+				int u = Utilities.convertToUtf32(cc, k);
+				for (int f = 0; f < fsize; ++f) {
+					font = fonts.get(f);
+					if (font != null && (font.getBaseFont() == null || font.getBaseFont().charExists(c))) {
+						if (lastidx != f) {
+							if (sb.length() > 0 && lastidx != -1) {
+								Chunk ck = createChunk(sb.toString(), props, (Font)fonts.get(lastidx));
+								ret.add(ck);
+								sb.setLength(0);
+							}
+							lastidx = f;
+						}
+						sb.append(c);
+						sb.append(cc[++k]);
+						break;
+					}
+				}
+			}
+			else {
+				for (int f = 0; f < fsize; ++f) {
+					font = fonts.get(f);
+					if (font != null && (font.getBaseFont() == null || font.getBaseFont().charExists(c))) {
+						if (lastidx != f) {
+							if (sb.length() > 0 && lastidx != -1) {
+								Chunk ck = createChunk(sb.toString(), props, fonts.get(lastidx));
+								ret.add(ck);
+								sb.setLength(0);
+							}
+							lastidx = f;
+						}
+						sb.append(c);
+						break;
+					}
+				}
+			}
+		}
+		if (sb.length() > 0 && lastidx != -1) {
+			Chunk ck = createChunk(sb.toString(), props, fonts.get(lastidx));
+			ret.add(ck);
+		}
+		return ret;
+	}
+
+	//andreas kappler: old functionality
 	public Chunk createChunk(String text, ChainedProperties props) {
-		Font font = getFont(props);
+		return createChunk(text, props, getFont(props, null));
+	}
+
+	public Chunk createChunk(String text, ChainedProperties props, Font font) {
 		float size = font.getSize();
 		size /= 2;
 		Chunk ck = new Chunk(text, font);
@@ -93,6 +167,10 @@ public class FactoryProperties {
 			ck.setTextRise(-size);
 		else if (props.hasProperty("sup"))
 			ck.setTextRise(size);
+		String bgColor = props.getProperty(Markup.CSS_KEY_BGCOLOR);
+		if (bgColor != null) {
+			ck.setBackground(Markup.decodeColor(bgColor));
+		}
 		ck.setHyphenation(getHyphenation(props));
 		return ck;
 	}
@@ -165,7 +243,7 @@ public class FactoryProperties {
 		return p;
 	}
 
-	public Font getFont(ChainedProperties props) {
+	public Font getFont(ChainedProperties props, String fontName) {
 		String face = props.getProperty(ElementTags.FACE);
 		if (face != null) {
 			StringTokenizer tok = new StringTokenizer(face, ",");
@@ -196,7 +274,7 @@ public class FactoryProperties {
 		String encoding = props.getProperty("encoding");
 		if (encoding == null)
 			encoding = BaseFont.WINANSI;
-		return fontImp.getFont(face, encoding, true, size, style, color);
+		return fontImp.getFont(fontName != null ? fontName : face, encoding, true, size, style, color);
 	}
 
 	/**
@@ -335,7 +413,7 @@ public class FactoryProperties {
 				h.put(ElementTags.FACE, prop.getProperty(key));
 			} else if (key.equals(Markup.CSS_KEY_FONTSIZE)) {
 				float actualFontSize = Markup.parseLength(cprops
-						.getProperty(ElementTags.SIZE),
+								.getProperty(ElementTags.SIZE),
 						Markup.DEFAULT_FONT_SIZE);
 				if (actualFontSize <= 0f)
 					actualFontSize = Markup.DEFAULT_FONT_SIZE;
@@ -355,6 +433,8 @@ public class FactoryProperties {
 				String ss = prop.getProperty(key).trim().toLowerCase();
 				if (ss.equals(Markup.CSS_VALUE_UNDERLINE))
 					h.put("u", null);
+				else if (ss.equals(Markup.CSS_VALUE_LINETHROUGH))
+					h.put("s", null);
 			} else if (key.equals(Markup.CSS_KEY_COLOR)) {
 				Color c = Markup.decodeColor(prop.getProperty(key));
 				if (c != null) {
@@ -364,10 +444,19 @@ public class FactoryProperties {
 					hs = "#" + hs.substring(hs.length() - 6);
 					h.put("color", hs);
 				}
+			} else if (key.equals(Markup.CSS_KEY_BGCOLOR)) {
+				Color c = Markup.decodeColor(prop.getProperty(key));
+				if (c != null) {
+					int hh = c.getRGB();
+					String hs = Integer.toHexString(hh);
+					hs = "000000" + hs;
+					hs = "#" + hs.substring(hs.length() - 6);
+					h.put(Markup.CSS_KEY_BGCOLOR, hs);
+				}
 			} else if (key.equals(Markup.CSS_KEY_LINEHEIGHT)) {
 				String ss = prop.getProperty(key).trim();
 				float actualFontSize = Markup.parseLength(cprops
-						.getProperty(ElementTags.SIZE),
+								.getProperty(ElementTags.SIZE),
 						Markup.DEFAULT_FONT_SIZE);
 				if (actualFontSize <= 0f)
 					actualFontSize = Markup.DEFAULT_FONT_SIZE;

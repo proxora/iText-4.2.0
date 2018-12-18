@@ -1,3 +1,29 @@
+package com.lowagie.text.html.simpleparser;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.Reader;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Stack;
+import java.util.StringTokenizer;
+
+import com.lowagie.text.*;
+import com.lowagie.text.html.HtmlTags;
+import com.lowagie.text.html.Markup;
+import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.draw.LineSeparator;
+import com.lowagie.text.xml.simpleparser.SimpleXMLDocHandler;
+import com.lowagie.text.xml.simpleparser.SimpleXMLParser;
+
+/*
+
+patched by andreas kappler
+
+selects fonts automatically like FontSelector
+
+ */
+
 /*
  * Copyright 2004 Paulo Soares
  *
@@ -42,42 +68,11 @@
  *
  * Contributions by:
  * Lubos Strapko
- * 
+ *
  * If you didn't download this code from the following link, you should check if
  * you aren't using an obsolete version:
  * http://www.lowagie.com/iText/
  */
-
-package com.lowagie.text.html.simpleparser;
-
-import java.io.File;
-import java.io.IOException;
-import java.io.Reader;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Stack;
-import java.util.StringTokenizer;
-
-import com.lowagie.text.html.HtmlTags;
-import com.lowagie.text.html.Markup;
-import com.lowagie.text.Chunk;
-import com.lowagie.text.DocListener;
-import com.lowagie.text.DocumentException;
-import com.lowagie.text.Element;
-import com.lowagie.text.ElementTags;
-import com.lowagie.text.ExceptionConverter;
-import com.lowagie.text.HeaderFooter;
-import com.lowagie.text.Image;
-import com.lowagie.text.ListItem;
-import com.lowagie.text.Paragraph;
-import com.lowagie.text.Phrase;
-import com.lowagie.text.Rectangle;
-import com.lowagie.text.TextElementArray;
-import com.lowagie.text.pdf.PdfPTable;
-import com.lowagie.text.pdf.draw.LineSeparator;
-import com.lowagie.text.FontProvider;
-import com.lowagie.text.xml.simpleparser.SimpleXMLDocHandler;
-import com.lowagie.text.xml.simpleparser.SimpleXMLParser;
 
 public class HTMLWorker implements SimpleXMLDocHandler, DocListener {
 
@@ -109,6 +104,8 @@ public class HTMLWorker implements SimpleXMLDocHandler, DocListener {
 
 	private FactoryProperties factoryProperties = new FactoryProperties();
 
+	private String[] fontNames;
+
 	/** Creates a new instance of HTMLWorker
 	 * @param document A class that implements <CODE>DocListener</CODE>
 	 * */
@@ -131,6 +128,10 @@ public class HTMLWorker implements SimpleXMLDocHandler, DocListener {
 			ff = (FontProvider) interfaceProps.get("font_factory");
 		if (ff != null)
 			factoryProperties.setFontImp(ff);
+
+		if(ff != null) {
+			fontNames = (String[]) interfaceProps.get("font_names");
+		}
 	}
 
 	public HashMap getInterfaceProps() {
@@ -148,7 +149,7 @@ public class HTMLWorker implements SimpleXMLDocHandler, DocListener {
 
 	public static ArrayList parseToList(Reader reader, StyleSheet style,
 			HashMap interfaceProps) throws IOException {
-		HTMLWorker worker = new HTMLWorker(null);
+		com.lowagie.text.html.simpleparser.HTMLWorker worker = new com.lowagie.text.html.simpleparser.HTMLWorker(null);
 		if (style != null)
 			worker.style = style;
 		worker.document = worker;
@@ -190,6 +191,8 @@ public class HTMLWorker implements SimpleXMLDocHandler, DocListener {
 			}
 			FactoryProperties.insertStyle(h, cprops);
 			if (tag.equals(HtmlTags.ANCHOR)) {
+				h.put(HtmlTags.U, null);
+				h.put(HtmlTags.COLOR, "#0000FF");
 				cprops.addToChain(tag, h);
 				if (currentParagraph == null) {
 					currentParagraph = new Paragraph();
@@ -203,7 +206,7 @@ public class HTMLWorker implements SimpleXMLDocHandler, DocListener {
 					currentParagraph = new Paragraph();
 				}
 				currentParagraph.add(factoryProperties
-						.createChunk("\n", cprops));
+						.createPhrase("\n", cprops, fontNames));
 				return;
 			}
 			if (tag.equals(HtmlTags.HORIZONTALRULE)) {
@@ -226,7 +229,7 @@ public class HTMLWorker implements SimpleXMLDocHandler, DocListener {
 				int hrAlign = Element.ALIGN_CENTER;
 				if (align != null) {
 					if (align.equalsIgnoreCase("left"))
-						hrAlign = Element.ALIGN_LEFT; 
+						hrAlign = Element.ALIGN_LEFT;
 					if (align.equalsIgnoreCase("right"))
 						hrAlign = Element.ALIGN_RIGHT;
 				}
@@ -304,7 +307,7 @@ public class HTMLWorker implements SimpleXMLDocHandler, DocListener {
 				if (after != null)
 					img.setSpacingAfter(Float.parseFloat(after));
 				float actualFontSize = Markup.parseLength(cprops
-						.getProperty(ElementTags.SIZE),
+								.getProperty(ElementTags.SIZE),
 						Markup.DEFAULT_FONT_SIZE);
 				if (actualFontSize <= 0f)
 					actualFontSize = Markup.DEFAULT_FONT_SIZE;
@@ -626,7 +629,7 @@ public class HTMLWorker implements SimpleXMLDocHandler, DocListener {
 			if (currentParagraph == null) {
 				currentParagraph = FactoryProperties.createParagraph(cprops);
 			}
-			Chunk chunk = factoryProperties.createChunk(content, cprops);
+			Element chunk = factoryProperties.createPhrase(content, cprops, fontNames);
 			currentParagraph.add(chunk);
 			return;
 		}
@@ -663,8 +666,7 @@ public class HTMLWorker implements SimpleXMLDocHandler, DocListener {
 		if (currentParagraph == null) {
 			currentParagraph = FactoryProperties.createParagraph(cprops);
 		}
-		Chunk chunk = factoryProperties.createChunk(buf.toString(), cprops);
-		currentParagraph.add(chunk);
+		currentParagraph.add(factoryProperties.createPhrase(buf.toString(), cprops, fontNames));
 	}
 
 	public boolean add(Element element) throws DocumentException {

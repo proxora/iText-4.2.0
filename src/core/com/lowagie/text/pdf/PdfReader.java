@@ -49,6 +49,10 @@
 
 package com.lowagie.text.pdf;
 
+import org.bouncycastle.cms.jcajce.JceKeyTransEnvelopedRecipient;
+import org.bouncycastle.cms.Recipient;
+import org.bouncycastle.cert.X509CertificateHolder;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -67,9 +71,11 @@ import java.util.zip.InflaterInputStream;
 import java.util.Stack;
 import java.security.Key;
 import java.security.MessageDigest;
+import java.security.PrivateKey;
 import java.security.cert.Certificate;
-import com.lowagie.text.error_messages.MessageLocalization;
+import java.security.cert.CertificateEncodingException;
 
+import com.lowagie.text.error_messages.MessageLocalization;
 import com.lowagie.text.ExceptionConverter;
 import com.lowagie.text.PageSize;
 import com.lowagie.text.Rectangle;
@@ -78,7 +84,6 @@ import com.lowagie.text.exceptions.InvalidPdfException;
 import com.lowagie.text.exceptions.UnsupportedPdfException;
 import com.lowagie.text.pdf.interfaces.PdfViewerPreferences;
 import com.lowagie.text.pdf.internal.PdfViewerPreferencesImp;
-
 import org.bouncycastle.cms.CMSEnvelopedData;
 import org.bouncycastle.cms.RecipientInformation;
 
@@ -707,6 +712,16 @@ public class PdfReader implements PdfViewerPreferences {
             default:
             	throw new UnsupportedPdfException(MessageLocalization.getComposedMessage("unknown.encryption.type.v.eq.1", rValue));
             }
+            
+            X509CertificateHolder structuratedCert;
+            try {
+              structuratedCert = new X509CertificateHolder(certificate.getEncoded());
+            } catch (CertificateEncodingException e) {
+                throw new ExceptionConverter(e);
+            } catch (IOException e) {
+              throw new ExceptionConverter(e);
+            }
+            
             for (int i = 0; i<recipients.size(); i++) {
                 PdfObject recipient = recipients.getPdfObject(i);
                 strings.remove(recipient);
@@ -721,7 +736,10 @@ public class PdfReader implements PdfViewerPreferences {
                         RecipientInformation recipientInfo = (RecipientInformation)recipientCertificatesIt.next();
 
                         if (recipientInfo.getRID().match(certificate) && !foundRecipient) {
-                         envelopedData = recipientInfo.getContent(certificateKey, certificateKeyProvider);
+                            Recipient rec = new JceKeyTransEnvelopedRecipient(
+                                    (PrivateKey) certificateKey)
+                                    .setProvider(certificateKeyProvider);
+                                envelopedData = recipientInfo.getContent(rec);
                          foundRecipient = true;
                         }
                     }

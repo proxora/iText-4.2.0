@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- $Date: 2008-04-18 16:50:32 -0400 (Fri, 18 Apr 2008) $ -->
+<!-- $Date: 2008-04-18 22:50:32 +0200 (Fr, 18 Apr 2008) $ -->
 <!-- author: Bruno Lowagie        -->
 
 <xsl:stylesheet version="1.0"

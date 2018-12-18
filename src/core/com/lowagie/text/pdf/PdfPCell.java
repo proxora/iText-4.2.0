@@ -1004,11 +1004,13 @@ public class PdfPCell extends Rectangle{
 				}
 			}
 		}
-		float height = getHeight();
-		if (height < getFixedHeight())
-			height = getFixedHeight();
-		else if (height < getMinimumHeight())
-			height = getMinimumHeight();
-		return height;
+        float height = getFixedHeight();
+        if (height <= 0)
+            height = getHeight();
+        if (height < getFixedHeight())
+            height = getFixedHeight();
+        else if (height < getMinimumHeight())
+            height = getMinimumHeight();
+        return height;
 	}
 }
